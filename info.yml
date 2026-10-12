@@ -19,6 +19,11 @@ configuration:
         description: The string value of the Published File/Tank Type used for published plates.
         default_value: Hiero Plate
 
+    exr_plate_published_file_type:
+        type: tank_type
+        description: The string value of the Published File/Tank Type used for the copied EXR plate sequence (one PublishedFile per Shot and plate version).
+        default_value: Plate
+
     nuke_script_published_file_type:
         type: tank_type
         description: The string value of the Published File/Tank Type used for Nuke scripts.

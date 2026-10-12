@@ -36,6 +36,9 @@ from hiero.exporters import FnNukeShotExporter
 sys.path.append(os.path.join(os.path.dirname(__file__), "python"))
 
 from tk_hiero_export import (
+    ShotgunCopyPlateExporter,
+    ShotgunCopyPlateExporterUI,
+    ShotgunCopyPlatePreset,
     ShotgunShotProcessor,
     ShotgunShotProcessorUI,
     ShotgunShotUpdater,
@@ -166,6 +169,10 @@ class HieroExport(Application):
             ShotgunNukeShotPreset, ShotgunNukeShotExporter
         )
         hiero.core.taskRegistry.registerTask(ShotgunAudioPreset, ShotgunAudioExporter)
+        if ShotgunCopyPlatePreset is not None:
+            hiero.core.taskRegistry.registerTask(
+                ShotgunCopyPlatePreset, ShotgunCopyPlateExporter
+            )
         hiero.core.taskRegistry.registerProcessor(
             ShotgunShotProcessorPreset, ShotgunShotProcessor
         )
@@ -179,6 +186,10 @@ class HieroExport(Application):
         hiero.ui.taskUIRegistry.registerTaskUI(
             ShotgunAudioPreset, ShotgunAudioExporterUI
         )
+        if ShotgunCopyPlatePreset is not None and ShotgunCopyPlateExporterUI is not None:
+            hiero.ui.taskUIRegistry.registerTaskUI(
+                ShotgunCopyPlatePreset, ShotgunCopyPlateExporterUI
+            )
         hiero.ui.taskUIRegistry.registerProcessorUI(
             ShotgunShotProcessorPreset, ShotgunShotProcessorUI
         )
@@ -264,7 +275,7 @@ class HieroExport(Application):
                     ),
                     (
                         copy_hiero_str,
-                        FnCopyExporter.CopyPreset(
+                        (ShotgunCopyPlatePreset or FnCopyExporter.CopyPreset)(
                             "", {}
                         ),
                     ),

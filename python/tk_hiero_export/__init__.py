@@ -63,3 +63,14 @@ from .sg_audio_export import (
     ShotgunAudioExporter,
     ShotgunAudioPreset,
 )
+
+try:
+    from .sg_copy_plate_export import (
+        ShotgunCopyPlateExporter,
+        ShotgunCopyPlateExporterUI,
+        ShotgunCopyPlatePreset,
+    )
+except Exception:  # keep ingest working if this Hiero build lacks the copy UI classes
+    ShotgunCopyPlateExporter = None
+    ShotgunCopyPlateExporterUI = None
+    ShotgunCopyPlatePreset = None
