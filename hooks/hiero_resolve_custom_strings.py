@@ -8,7 +8,6 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 import sgtk
-from tank.util import shotgun
 from tank import Hook
 
 
@@ -38,21 +37,7 @@ class HieroResolveCustomStrings(Hook):
         shot_code = task._item.name()
 
         if keyword == "{Projectcode}":
-            # Getting shotgun credentials
-            sg = shotgun.get_sg_connection()
-
-            # Finding current project name
-            current_engine = sgtk.platform.current_engine()
-            current_context = current_engine.context
-            projectname = current_context.project["name"]
-
-            projectcode = sg.find_one(
-                "Project",
-                [["name", "is", projectname]],
-                ["sg_projectcode"],
-            )
-
-            return projectcode.get("sg_projectcode")
+            return self._project_code()
 
         # grab the shot from the cache, or the get_shot hook if not cached
         sg_shot = self._sg_lookup_cache.get(shot_code)
@@ -86,3 +71,28 @@ class HieroResolveCustomStrings(Hook):
         )
 
         return result
+
+    # sg_projectcode per project id, so the template is not re-queried for
+    # every task and keyword.
+    _project_code_cache = {}
+
+    def _project_code(self):
+        project = self.parent.context.project
+        if project is None:
+            raise sgtk.TankError("Cannot resolve {Projectcode}: no project in the context.")
+
+        cached = self._project_code_cache.get(project["id"])
+        if cached:
+            return cached
+
+        record = self.parent.shotgun.find_one(
+            "Project", [["id", "is", project["id"]]], ["sg_projectcode"]
+        )
+        code = (record or {}).get("sg_projectcode")
+        if not code:
+            raise sgtk.TankError(
+                "Project '%s' has an empty sg_projectcode in Flow Production Tracking; "
+                "paths would contain 'None'. Fill it in before exporting." % project.get("name")
+            )
+        self._project_code_cache[project["id"]] = code
+        return code

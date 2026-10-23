@@ -22,6 +22,7 @@ import sgtk
 from sgtk.platform.qt import QtGui, QtCore
 
 from .base import ShotgunHieroObjectBase
+from . import script_guard
 from . import HieroGetExtraPublishData
 
 
@@ -126,6 +127,7 @@ class ShotgunNukeShotExporter(
         self._thumbnail = None
         self._hero = None
         self._heroItem = None
+        self._guard = None
 
         if self._collate:
 
@@ -164,6 +166,20 @@ class ShotgunNukeShotExporter(
 
     def startTask(self):
         """Run Task"""
+        # Never clobber artist work: if this shot/step already has versioned
+        # scripts, the starter script must not overwrite or add to them.
+        self._guard = None
+        try:
+            target = self.resolvedExportPath().replace("/", os.path.sep)
+            self._guard = script_guard.protect(target)
+            if self._guard:
+                self.app.log_warning(
+                    "%s already has Nuke work; the starter script will not be "
+                    "written." % os.path.dirname(target)
+                )
+        except Exception as exc:
+            self.app.log_warning("Could not check for existing Nuke work (%s)" % exc)
+
         # call the publish data hook to allow for publish customization while _item is valid (unlike finishTask)
         self._extra_publish_data = self.app.execute_hook(
             "hook_get_extra_publish_data",
@@ -178,7 +194,17 @@ class ShotgunNukeShotExporter(
         Finish Task
         """
         # run base class implementation
-        FnNukeShotExporter.NukeShotExporter.finishTask(self)
+        try:
+            FnNukeShotExporter.NukeShotExporter.finishTask(self)
+        finally:
+            if self._guard:
+                outcome = script_guard.restore(self._guard)
+                self.app.log_info(
+                    "Existing Nuke work left untouched (%s): %s"
+                    % (outcome, self._guard.path)
+                )
+        if self._guard:
+            return  # nothing new was written, so there is nothing to publish
         # Don't create PublishedFiles for non-hero collated items
         if self._collate and not self._hero:
             return
@@ -292,7 +318,7 @@ class ShotgunNukeShotExporter(
         try:
             for toolkit_specifier in self._preset.properties()["toolkitWriteNodes"]:
                 # break down a string like 'Toolkit Node: Mono Dpx ("editorial")' into name and output
-                regex = "(?<=\<)(.*?)(?=\>)"
+                regex = r"(?<=\<)(.*?)(?=\>)"
                 match = re.findall(regex, toolkit_specifier)
 
                 dictionary = {

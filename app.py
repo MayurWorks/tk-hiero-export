@@ -27,7 +27,6 @@ import hiero.ui
 import hiero.core
 import hiero.exporters
 
-from hiero.exporters import FnExternalRender
 from hiero.exporters import FnCopyExporter
 from hiero.exporters import FnNukeShotExporter
 
@@ -54,6 +53,8 @@ from tk_hiero_export import (
     ShotgunNukeShotExporterUI,
     ShotgunAudioExporterUI,
     ShotgunHieroObjectBase,
+    COPY_PLATE_IMPORT_ERROR,
+    ingest as slatex_ingest,
 )
 
 sys.path.pop()
@@ -93,6 +94,46 @@ class HieroExport(Application):
         # let the shot exporter know when the first shot is being run
         self.first_shot = False
         self._register_exporter()
+
+        # Menu commands (they appear in the engine's menu).
+        for short_name, label, description, callback in (
+            (
+                "slatex_ingest_exr_plates",
+                "SlateX: Ingest EXR Plates...",
+                "Pick EXR sequences in a file browser; Shots and Sequences are "
+                "matched or created in ShotGrid and the plates are published.",
+                slatex_ingest.show_ingest_panel,
+            ),
+            (
+                "slatex_ingest_active_sequence",
+                "SlateX: Ingest Active Sequence",
+                "Validate and ingest the active sequence: shots, plates, reference "
+                "movies and starter scripts. No export dialog.",
+                slatex_ingest.ingest_active_sequence,
+            ),
+            (
+                "slatex_check_active_sequence",
+                "SlateX: Check Active Sequence",
+                "Run the ingest pre-flight checks on the active sequence and show "
+                "the report. Changes nothing.",
+                slatex_ingest.check_active_sequence,
+            ),
+            (
+                "slatex_repair_plates",
+                "SlateX: Repair Plates & Versions",
+                "Register plates that are on disk but not published and fix "
+                "mangled Version names, after showing exactly what will change.",
+                slatex_ingest.repair_plates,
+            ),
+        ):
+            self.engine.register_command(
+                label,
+                (lambda cb=callback: cb(self)),
+                {"short_name": short_name, "description": description},
+            )
+
+        # Say right at startup whether the ingest is usable, or why not.
+        slatex_ingest.log_health(self, COPY_PLATE_IMPORT_ERROR)
 
     @property
     def context_change_allowed(self):
@@ -173,6 +214,13 @@ class HieroExport(Application):
             hiero.core.taskRegistry.registerTask(
                 ShotgunCopyPlatePreset, ShotgunCopyPlateExporter
             )
+        else:
+            # Never degrade silently: without this exporter plates are copied by
+            # Hiero's stock task and are NOT published to ShotGrid.
+            self.log_error(
+                "PLATE PUBLISHING IS DISABLED: sg_copy_plate_export failed to import.\n%s"
+                % COPY_PLATE_IMPORT_ERROR
+            )
         hiero.core.taskRegistry.registerProcessor(
             ShotgunShotProcessorPreset, ShotgunShotProcessor
         )
@@ -198,6 +246,10 @@ class HieroExport(Application):
         self._old_AddDefaultPresets_fn = hiero.core.taskRegistry._defaultPresets
         hiero.core.taskRegistry.setDefaultPresets(self._add_default_presets)
 
+    def add_default_presets(self, overwrite=False):
+        """Create the default export presets (used by the ingest command)."""
+        self._add_default_presets(overwrite)
+
     def _add_default_presets(self, overwrite):
         """
         Hiero std method to add new exporter presets.
@@ -207,7 +259,7 @@ class HieroExport(Application):
         self._old_AddDefaultPresets_fn(overwrite)
 
         # Add Shotgun template
-        name = "Planet X ShotGrid Shot"
+        name = self.get_setting("ingest_preset_name")
         localpresets = [
             preset.name() for preset in hiero.core.taskRegistry.localPresets()
         ]
@@ -217,7 +269,6 @@ class HieroExport(Application):
             # grab all our path templates
             plate_template = self.get_template("template_plate_path")
             script_template = self.get_template("template_nuke_script_path")
-            render_template = self.get_template("template_render_path")
             copy_template = self.get_template("template_copy_path")
 
             # call the hook to translate them into hiero paths, using hiero keywords
@@ -233,20 +284,12 @@ class HieroExport(Application):
             )
             self.log_debug("Translated %s --> %s" % (script_template, script_hiero_str))
 
-            render_hiero_str = self.execute_hook(
-                "hook_translate_template",
-                template=render_template,
-                output_type="render",
-            )
-            self.log_debug("Translated %s --> %s" % (render_template, render_hiero_str))
-
             copy_hiero_str = self.execute_hook("hook_translate_template", template=copy_template, output_type='copy')
             self.log_debug("Translated %s --> %s" % (copy_template, copy_hiero_str))
 
             # check so that no unknown keywords exist in the templates after translation
             self._validate_hiero_export_template(plate_hiero_str)
             self._validate_hiero_export_template(script_hiero_str)
-            self._validate_hiero_export_template(render_hiero_str)
             self._validate_hiero_export_template(copy_hiero_str)
 
             # and set the default properties to be based off of those templates
@@ -260,12 +303,6 @@ class HieroExport(Application):
                     (
                         script_hiero_str,
                         ShotgunNukeShotPreset("", {"readPaths": [copy_hiero_str.replace(os.sep, "/")], "writePaths": []}),
-                    ),
-                    (
-                        render_hiero_str,
-                        FnExternalRender.NukeRenderPreset(
-                            "", {"file_type": "exr", "exr": {"datatype": "16 bit"}}
-                        ),
                     ),
                     (
                         plate_hiero_str,

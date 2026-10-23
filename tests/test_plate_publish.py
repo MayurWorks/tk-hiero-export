@@ -1,5 +1,4 @@
 import importlib.util
-import os
 import pathlib
 
 import pytest
@@ -115,10 +114,37 @@ def test_register_skips_without_frames(tmp_path):
     assert log.msgs[0][0] == "warning"
 
 
-def test_register_warns_on_gaps(tmp_path):
+def test_register_refuses_incomplete_by_default(tmp_path):
     FakeSgtk.util.calls = []
     log = Log()
     pattern = _make_frames(tmp_path, [1001, 1003])
-    pp.register_plate_publish(FakeSgtk, "tk", FakeSg(), FakeCtx(), pattern, 1, "Plate", logger=log)
+    out = pp.register_plate_publish(
+        FakeSgtk, "tk", FakeSg(), FakeCtx(), pattern, 1, "Plate", logger=log
+    )
+    assert out is None and FakeSgtk.util.calls == []
+    assert any("missing" in m for lvl, m in log.msgs if lvl == "error")
+    assert any("NOT registered" in m for lvl, m in log.msgs)
+
+
+def test_register_incomplete_allowed_when_not_required(tmp_path):
+    FakeSgtk.util.calls = []
+    log = Log()
+    pattern = _make_frames(tmp_path, [1001, 1003])
+    pp.register_plate_publish(
+        FakeSgtk, "tk", FakeSg(), FakeCtx(), pattern, 1, "Plate",
+        logger=log, require_complete=False,
+    )
     assert any("missing" in m for lvl, m in log.msgs if lvl == "warning")
     assert len(FakeSgtk.util.calls) == 1
+
+
+def test_register_refuses_zero_byte_frames(tmp_path):
+    FakeSgtk.util.calls = []
+    log = Log()
+    pattern = _make_frames(tmp_path, [1001, 1002])
+    (tmp_path / (pathlib.Path(pattern % 1002).name)).write_bytes(b"")
+    out = pp.register_plate_publish(
+        FakeSgtk, "tk", FakeSg(), FakeCtx(), pattern, 1, "Plate", logger=log
+    )
+    assert out is None and FakeSgtk.util.calls == []
+    assert any("zero-byte" in m for lvl, m in log.msgs)

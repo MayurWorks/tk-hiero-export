@@ -50,9 +50,11 @@ class HieroTranslateTemplate(Hook):
         try:
             task_filter = self.parent.get_setting("default_task_filter", "[]")
             task_filter = ast.literal_eval(task_filter)
-            for (field, op, value) in task_filter:
+            for (field, _op, value) in task_filter:
                 if field == "step.Step.code":
-                    mapping["{Step}"] = value
+                    # Folder and file names in the pipeline use the Step's SHORT
+                    # name (CMP), not its code (Comp), so look it up.
+                    mapping["{Step}"] = self._step_short_name(value)
         except ValueError:
             # continue without Step
             self.parent.log_error("Invalid value for 'default_task_filter'")
@@ -78,3 +80,25 @@ class HieroTranslateTemplate(Hook):
                 )
 
         return template_str
+
+    def _step_short_name(self, step_code):
+        """Short name of the Shot Step called ``step_code`` (falls back to the code)."""
+        try:
+            step = self.parent.shotgun.find_one(
+                "Step",
+                [["code", "is", step_code], ["entity_type", "is", "Shot"]],
+                ["short_name"],
+            )
+            short_name = (step or {}).get("short_name")
+            if short_name:
+                return short_name
+            self.parent.log_warning(
+                "Step '%s' has no short_name in Flow Production Tracking; "
+                "using the code in paths." % step_code
+            )
+        except Exception as exc:
+            self.parent.log_warning(
+                "Could not look up the short name of Step '%s' (%s); "
+                "using the code in paths." % (step_code, exc)
+            )
+        return step_code

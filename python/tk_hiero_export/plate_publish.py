@@ -73,6 +73,18 @@ def missing_frames(first, last, frames):
     return sorted(set(range(first, last + 1)) - set(frames))
 
 
+def zero_byte_frames(pattern, frames):
+    """Frame numbers whose file is empty or unreadable (a failed/partial copy)."""
+    bad = []
+    for frame in frames:
+        try:
+            if os.path.getsize(pattern % frame) == 0:
+                bad.append(frame)
+        except OSError:
+            bad.append(frame)
+    return bad
+
+
 def sequence_dirname(path):
     return os.path.dirname(path.replace("\\", "/"))
 
@@ -102,13 +114,19 @@ def register_plate_publish(
     published_file_type,
     task=None,
     logger=None,
+    require_complete=True,
 ):
     """
     Register the EXR sequence at ``path`` (any frame-placeholder style) as a
     PublishedFile on ``context``.
 
+    With ``require_complete`` (the default) a sequence that has missing frames
+    or zero-byte frames is NOT registered: a half-copied plate must never
+    become the version everybody reads. Pass False to register it anyway.
+
     Returns the PublishedFile dict, the existing one when already registered,
-    or None when nothing was registered (single file / no frames on disk). The
+    or None when nothing was registered (single file / no frames on disk /
+    incomplete sequence). The
     reasons for returning None are logged, never raised: a plate that fails to
     register must not abort the whole ingest.
     """
@@ -128,12 +146,24 @@ def register_plate_publish(
         return None
 
     gaps = missing_frames(first, last, frames)
-    if gaps:
-        _log(
-            "warning",
-            "Plate %s has %d missing frame(s) inside %d-%d (first missing: %d)",
-            pattern, len(gaps), first, last, gaps[0],
-        )
+    empty = zero_byte_frames(pattern, frames)
+    if gaps or empty:
+        level = "error" if require_complete else "warning"
+        if gaps:
+            _log(
+                level,
+                "Plate %s has %d missing frame(s) inside %d-%d (first missing: %d)",
+                pattern, len(gaps), first, last, gaps[0],
+            )
+        if empty:
+            _log(
+                level,
+                "Plate %s has %d zero-byte frame(s) (first: %d)",
+                pattern, len(empty), empty[0],
+            )
+        if require_complete:
+            _log("error", "Plate NOT registered: the copy is incomplete. Re-run the ingest.")
+            return None
 
     name = os.path.basename(pattern)
     entity = context.entity

@@ -24,6 +24,95 @@ configuration:
         description: The string value of the Published File/Tank Type used for the copied EXR plate sequence (one PublishedFile per Shot and plate version).
         default_value: Plate
 
+    ingest_auto_start:
+        type: bool
+        description: In the "Ingest EXR Plates" panel, start the ingest as soon as
+                     plates are added (rows with problems are held back).
+        default_value: true
+
+    ingest_sequence_rules:
+        type: list
+        description: "Extra rules to work out the Sequence from a Shot name, tried
+                     before the built-in E<n> -> EP_<n> rule. Each entry has a
+                     'pattern' (regex with named groups) and a 'sequence' (e.g. EP_{ep})."
+        values:
+            type: dict
+        default_value: []
+
+    ingest_strip_suffix:
+        type: str
+        description: Regex of a trailing part removed from plate file names to get
+                     the Shot name (e.g. _plate, _v001). Empty uses the built-in one.
+        default_value: ""
+
+    ingest_browse_root:
+        type: str
+        description: Folder the panel's file browser opens at. Empty = home folder.
+        default_value: ""
+
+    ingest_preset_name:
+        type: str
+        description: Name of the Hiero export preset that the "Ingest Active Sequence"
+                     command runs. It is created automatically the first time Hiero
+                     starts with this app loaded.
+        default_value: SlateX Ingest
+
+    ingest_gate_mode:
+        type: str
+        description: "What the pre-flight checks do before an export starts. 'block'
+                     stops the export and shows a report when a clip has a real problem
+                     (bad shot or sequence name, missing/zero-byte frames, not EXR,
+                     duplicate shot). 'warn' only logs the report. 'off' disables the
+                     checks. A bug inside the checks never blocks an export."
+        default_value: block
+
+    ingest_shot_pattern:
+        type: str
+        description: Regular expression every shot (clip) name must match.
+        default_value: "^[A-Z0-9]+_[A-Z0-9]+_\\d{4}$"
+
+    ingest_sequence_pattern:
+        type: str
+        description: Regular expression the timeline name must match, because it becomes
+                     the Flow Production Tracking Sequence code and a folder name.
+        default_value: "^[A-Za-z0-9]+(_[A-Za-z0-9]+)*$"
+
+    ingest_allow_new_shots:
+        type: bool
+        description: When true, clips whose shot does not exist yet are created in
+                     Flow Production Tracking (names are still validated). When false the
+                     ingest is blocked until the shots exist.
+        default_value: true
+
+    ingest_plate_extension:
+        type: str
+        description: Required extension of the source frame sequence (without the dot).
+                     Leave empty to accept any sequence format.
+        default_value: exr
+
+    ingest_post_note:
+        type: bool
+        description: When true, a Note summarising each ingest run (what was published,
+                     what failed) is posted on the Sequence and its Shots.
+        default_value: true
+
+    ingest_ready_status:
+        type: str
+        description: Status code that waiting tasks on a Shot are moved to once its plate
+                     has been published ("rdy" = Ready to Start). Leave empty to never
+                     touch task statuses.
+        default_value: rdy
+
+    ingest_waiting_status:
+        type: str
+        description: Status code of the tasks that count as "waiting for the plate".
+        default_value: wtg
+
+    ingest_show_summary:
+        type: bool
+        description: Show a summary dialog when an ingest run has finished.
+        default_value: true
+
     nuke_script_published_file_type:
         type: tank_type
         description: The string value of the Published File/Tank Type used for Nuke scripts.

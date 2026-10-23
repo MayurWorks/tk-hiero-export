@@ -8,6 +8,7 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
+import sgtk
 from tank import Hook
 
 
@@ -48,7 +49,11 @@ class HieroGetShot(Hook):
         shots = sg.find("Shot", filter, fields=fields)
         if len(shots) > 1:
             # can not handle multiple shots with the same name
-            raise Exception("Multiple shots named '%s' found", item.name())
+            raise sgtk.TankError(
+                "Multiple shots named '%s' found under sequence '%s'. Merge or "
+                "rename the duplicates in Flow Production Tracking."
+                % (item.name(), item.parentSequence().name())
+            )
         if len(shots) == 0:
             # create shot in shotgun
             shot_data = {

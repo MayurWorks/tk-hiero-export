@@ -68,3 +68,13 @@ App that adds Shotgun awareness to Nuke Studio's sequence export.  It adds a new
 | `template_nuke_script_path` | A reference to a template which specifies what published nuke scripts will be named.  The translate template hook must understand how to translate this to Hiero keywords. |               |        |
 | `template_render_path`      | A reference to a template which specifies what renders will be named. The translate template hook must understand how to translate this to Hiero keywords.                 |               |        |
 | `template_version`          | String template that specifies how to format the Hiero tk_version token as a version string for tk.                                                                        |               |        |
+
+## SlateX: Ingest EXR Plates (file-browser panel)
+
+Hiero menu → **SlateX: Ingest EXR Plates...**
+
+1. Pick EXR sequences (or whole folders) in the browser on the left, or drag them in. A single frame stands for its whole sequence.
+2. Each plate becomes a row: Sequence, Shot, frame range, size (read from the EXR header), and whether the Shot exists, is new, or has a problem. The Sequence is learned from Shots already in ShotGrid (STRM_E1_* → EP_1), then the `E<n>` → `EP_<n>` rule, then the parent folder name.
+3. With *Ingest automatically* on (setting `ingest_auto_start`), rows without errors start straight away. Missing Shots/Sequences are created by the normal ingest. Red rows are held back; fix the name in the table and they re-check.
+
+The panel builds one Hiero timeline per ShotGrid Sequence (bin "Ingest <date time>") and runs the same ingest as "Ingest Active Sequence", so the gate, plate publish, report and Note are identical. Settings: `ingest_auto_start`, `ingest_sequence_rules`, `ingest_strip_suffix`, `ingest_browse_root`.

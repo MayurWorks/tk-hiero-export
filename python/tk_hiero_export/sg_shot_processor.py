@@ -33,6 +33,7 @@ except ImportError:
     ShotProcessorUI = FnShotProcessor.ShotProcessor
 
 from .base import ShotgunHieroObjectBase
+from . import ingest
 from .version_creator import ShotgunTranscodeExporter
 from .shot_updater import ShotgunShotUpdaterPreset
 from .shot_updater import ShotgunShotUpdater
@@ -360,6 +361,10 @@ class ShotgunShotProcessor(ShotgunHieroObjectBase, FnShotProcessor.ShotProcessor
             return FnShotProcessor.ShotProcessor.startProcessing(
                 self, exportItems, preview
             )
+
+        # Pre-flight: stop a bad timeline BEFORE anything is created in ShotGrid
+        # or copied on disk. Raises when the clips have real problems.
+        ingest.run_gate(self.app, exportItems)
 
         # add a top level task to manage shotgun shots
         exportTemplate = self._exportTemplate.flatten()

@@ -29,6 +29,7 @@ import sgtk.util
 from sgtk.platform.qt import QtGui, QtCore
 
 from .base import ShotgunHieroObjectBase
+from . import plate_publish, sg_upsert
 from .collating_exporter import CollatingExporter, CollatedShotPreset
 
 from . import (
@@ -340,7 +341,6 @@ class ShotgunTranscodeExporter(
 
             file_name = os.path.basename(self._resolved_export_path)
             file_name = os.path.splitext(file_name)[0]
-            file_name = file_name.capitalize()
 
             # use the head/tail to populate frame first/last/range fields on
             # the Version
@@ -420,9 +420,21 @@ class ShotgunTranscodeExporter(
             self.app.sgtk
         )
 
-        # register publish
-        self.app.log_debug("Register publish in shotgun: %s" % str(args))
-        pub_data = tank.util.register_publish(**args)
+        # register publish (or reuse the one a previous run of this export made)
+        pub_data = plate_publish.find_existing_publish(
+            self.app.shotgun,
+            self._sg_shot,
+            args["name"],
+            args["version_number"],
+            published_file_type,
+        )
+        if pub_data:
+            self.app.log_info(
+                "Reusing existing PublishedFile %s for %s" % (pub_data["id"], args["name"])
+            )
+        else:
+            self.app.log_debug("Register publish in shotgun: %s" % str(args))
+            pub_data = tank.util.register_publish(**args)
         if self._extra_publish_data is not None:
             self.app.log_debug(
                 "Updating PTR %s %s"
@@ -444,6 +456,7 @@ class ShotgunTranscodeExporter(
         # create version
         ################
         vers = None
+        version_created = False
         if self._preset.properties()["create_version"]:
             if published_file_entity_type == "PublishedFile":
                 self._version_data["published_files"] = [pub_data]
@@ -451,7 +464,14 @@ class ShotgunTranscodeExporter(
                 self._version_data["tank_published_file"] = pub_data
 
             self.app.log_debug("Creating PTR Version %s" % str(self._version_data))
-            vers = self.app.shotgun.create("Version", self._version_data)
+            vers, version_created = sg_upsert.upsert_version(
+                self.app.shotgun, self._version_data
+            )
+            if not version_created:
+                self.app.log_info(
+                    "Updated existing Version %s instead of creating a duplicate"
+                    % vers["id"]
+                )
 
             if os.path.exists(self._quicktime_path):
                 self.app.log_debug(
@@ -466,7 +486,7 @@ class ShotgunTranscodeExporter(
 
         # Post creation hook
         ####################
-        if vers:
+        if vers and version_created:
             self.app.execute_hook(
                 "hook_post_version_creation",
                 version_data=vers,

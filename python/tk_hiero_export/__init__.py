@@ -64,13 +64,22 @@ from .sg_audio_export import (
     ShotgunAudioPreset,
 )
 
+# Plate registration lives in sg_copy_plate_export. If it cannot be imported we
+# must not silently fall back to Hiero's stock copy (plates would be copied but
+# never published). The reason is kept so the app can report it loudly.
+COPY_PLATE_IMPORT_ERROR = None
 try:
     from .sg_copy_plate_export import (
         ShotgunCopyPlateExporter,
         ShotgunCopyPlateExporterUI,
         ShotgunCopyPlatePreset,
     )
-except Exception:  # keep ingest working if this Hiero build lacks the copy UI classes
+except Exception:
+    import traceback
+
+    COPY_PLATE_IMPORT_ERROR = traceback.format_exc()
     ShotgunCopyPlateExporter = None
     ShotgunCopyPlateExporterUI = None
     ShotgunCopyPlatePreset = None
+
+from . import ingest  # noqa: E402,F401

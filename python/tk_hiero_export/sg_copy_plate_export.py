@@ -7,14 +7,14 @@
 # PublishedFile. Without this the plate only exists on disk and every consumer
 # (Nuke Read node setup, Loader, Breakdown) has to guess its location.
 
-import os
-
 from hiero.exporters import FnCopyExporter
 
 import sgtk
 
 from .base import ShotgunHieroObjectBase
 from . import plate_publish
+from . import ingest
+from . import HieroGetShot
 
 try:  # the UI base class is not present in every Hiero version
     from hiero.exporters import FnCopyExporterUI
@@ -41,11 +41,42 @@ class ShotgunCopyPlateExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExport
     def finishTask(self):
         FnCopyExporter.CopyExporter.finishTask(self)
 
+        # Registration problems are raised, not swallowed: a plate that sits on
+        # disk without a PublishedFile is invisible to every downstream tool,
+        # so the task must show as failed in Hiero's export queue. The outcome
+        # is also reported to the ingest session for the end-of-run summary.
+        shot = self._item.name()
         try:
-            self._register_plate()
+            status, detail = self._register_plate()
         except Exception as exc:
-            # A failed registration must never abort the export itself.
-            self.app.log_error("Plate PublishedFile registration failed: %s" % exc)
+            message = str(exc).strip().splitlines()[0] if str(exc).strip() else repr(exc)
+            ingest.record(self.app, shot, "failed", message)
+            raise
+        ingest.record(self.app, shot, status, detail)
+
+    def _shot_context(self, path):
+        """
+        Toolkit context of the Shot this export resolved (same lookup the
+        Version/audio exporters use), falling back to the path cache.
+        """
+        try:
+            if not hasattr(self.app, "preprocess_data"):
+                self.app.preprocess_data = {}
+            sg_shot = self.app.execute_hook(
+                "hook_get_shot",
+                task=self,
+                item=self._item,
+                data=self.app.preprocess_data,
+                upload_thumbnail=False,
+                base_class=HieroGetShot,
+            )
+            return self.app.tank.context_from_entity("Shot", sg_shot["id"])
+        except Exception as exc:
+            self.app.log_warning(
+                "Could not resolve the Shot from the export item (%s); "
+                "falling back to the path cache for %s" % (exc, path)
+            )
+            return self.app.tank.context_from_path(path)
 
     def _register_plate(self):
         if self._resolved_export_path is None:
@@ -55,17 +86,17 @@ class ShotgunCopyPlateExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExport
         path = self._resolved_export_path
         if not path.lower().endswith(".exr"):
             self.app.log_debug("Plate publish skipped, not an EXR: %s" % path)
-            return
+            return "skipped", "not an EXR sequence"
 
-        ctx = self.app.tank.context_from_path(path)
+        ctx = self._shot_context(path)
         if ctx.entity is None or ctx.entity.get("type") != "Shot":
-            self.app.log_warning(
-                "Plate publish skipped, %s does not resolve to a Shot context" % path
+            raise sgtk.TankError(
+                "Plate was copied to %s but could not be linked to a Shot, so it "
+                "was NOT published." % path
             )
-            return
 
         published_file_type = self.app.get_setting("exr_plate_published_file_type")
-        plate_publish.register_plate_publish(
+        result = plate_publish.register_plate_publish(
             sgtk_module=sgtk,
             tk=self.app.tank,
             sg=self.app.shotgun,
@@ -73,25 +104,14 @@ class ShotgunCopyPlateExporter(ShotgunHieroObjectBase, FnCopyExporter.CopyExport
             path=path,
             version_number=int(self._tk_version_number),
             published_file_type=published_file_type,
-            logger=_AppLogger(self.app),
+            logger=ingest.AppLogger(self.app),
         )
-
-
-class _AppLogger(object):
-    """Adapts the Toolkit app log_* methods to the logging-style API the
-    helper module expects."""
-
-    def __init__(self, app):
-        self._app = app
-
-    def info(self, msg):
-        self._app.log_info(msg)
-
-    def warning(self, msg):
-        self._app.log_warning(msg)
-
-    def error(self, msg):
-        self._app.log_error(msg)
+        if result is None:
+            raise sgtk.TankError(
+                "Plate %s was copied but NOT published (incomplete or missing "
+                "frames). See the log for details." % path
+            )
+        return "ok", "p%03d" % int(self._tk_version_number)
 
 
 class ShotgunCopyPlatePreset(ShotgunHieroObjectBase, FnCopyExporter.CopyPreset):

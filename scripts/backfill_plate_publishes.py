@@ -9,8 +9,12 @@ It runs outside Nuke/Hiero using the project's pipeline configuration:
 
     python backfill_plate_publishes.py \\
         --config /path/to/pipeline_configuration \\
-        --project storm \\
-        --dry-run
+        --project storm            # dry run: only lists what it would register
+
+    python backfill_plate_publishes.py ... --apply    # really register
+
+Plates ingested before the file-name change live under the template
+"hiero_copy_path_legacy"; the script checks both templates by default.
 
 Credentials come from the environment (script user):
     SG_SITE_URL, SG_SCRIPT_NAME, SG_SCRIPT_KEY
@@ -19,43 +23,23 @@ Safe to run repeatedly: a plate version that already has a PublishedFile of the
 same name/version/type is skipped.
 """
 import argparse
-import importlib.util
 import os
-import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-_PP = os.path.join(HERE, os.pardir, "python", "tk_hiero_export", "plate_publish.py")
+_PKG = os.path.abspath(os.path.join(HERE, os.pardir, "python", "tk_hiero_export"))
+if _PKG not in sys.path:
+    sys.path.insert(0, _PKG)
+
+import plate_publish as _plate_publish  # noqa: E402  (no hiero imports)
+import plate_repair  # noqa: E402
+
+# One implementation shared with the in-Hiero "Repair Plates & Versions" command.
+plate_versions = plate_repair.plate_versions
 
 
 def _load_plate_publish():
-    spec = importlib.util.spec_from_file_location("plate_publish", _PP)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def plate_versions(tk, template_name, fields):
-    """
-    Return {version: printf_pattern} for every plate version found on disk for
-    one Shot, using the hiero copy template so folder naming is never
-    duplicated here.
-    """
-    template = tk.templates[template_name]
-    found = tk.paths_from_template(
-        template, fields, skip_keys=["version", "SEQ"], skip_missing_optional_keys=True
-    )
-    versions = {}
-    for path in found:
-        path = path.replace("\\", "/")
-        flds = template.get_fields(path)
-        version = flds.get("version")
-        if version is None:
-            continue
-        pattern_fields = dict(flds)
-        pattern_fields["SEQ"] = "%04d"
-        versions[int(version)] = template.apply_fields(pattern_fields)
-    return versions
+    return _plate_publish
 
 
 def backfill(tk, sg, project_name, published_file_type="Plate",
@@ -113,6 +97,10 @@ def main():
     ap.add_argument("--type", default="Plate", help="PublishedFileType name (default Plate)")
     ap.add_argument("--shots", nargs="*", help="limit to these shot codes")
     ap.add_argument("--apply", action="store_true", help="really register (default is dry run)")
+    ap.add_argument(
+        "--template", nargs="+", default=["hiero_copy_path", "hiero_copy_path_legacy"],
+        help="plate path template(s) to scan (default: current and legacy naming)",
+    )
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.config, "install", "core", "python"))
@@ -125,8 +113,13 @@ def main():
     )
     sgtk.set_authenticated_user(user)
     tk = sgtk.sgtk_from_path(args.config)
-    backfill(tk, tk.shotgun, args.project, args.type, shot_filter=args.shots,
-             dry_run=not args.apply, sgtk_module=sgtk)
+    for template_name in args.template:
+        if template_name not in tk.templates:
+            print("template %r is not in this configuration, skipping" % template_name)
+            continue
+        print("== template %s ==" % template_name)
+        backfill(tk, tk.shotgun, args.project, args.type, template_name=template_name,
+                 shot_filter=args.shots, dry_run=not args.apply, sgtk_module=sgtk)
 
 
 if __name__ == "__main__":
