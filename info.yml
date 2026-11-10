@@ -37,7 +37,10 @@ configuration:
                      'pattern' (regex with named groups) and a 'sequence' (e.g. EP_{ep})."
         values:
             type: dict
-        default_value: []
+        # Toolkit rejects an empty list, so the default is the built-in rule.
+        default_value:
+        - pattern: '^(?P<code>[A-Za-z0-9]+)_[Ee](?P<ep>\\d+)_(?P<num>\\d+)$'
+          sequence: "EP_{ep}"
 
     ingest_strip_suffix:
         type: str
