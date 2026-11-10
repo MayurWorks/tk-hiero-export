@@ -72,7 +72,7 @@ configuration:
     ingest_shot_pattern:
         type: str
         description: Regular expression every shot (clip) name must match.
-        default_value: "^[A-Z0-9]+_[A-Z0-9]+_\d{4}$"
+        default_value: "^[A-Z0-9]+_[A-Z0-9]+_\\d{4}$"
 
     ingest_sequence_pattern:
         type: str
