@@ -39,7 +39,7 @@ configuration:
             type: dict
         # Toolkit rejects an empty list, so the default is the built-in rule.
         default_value:
-        - pattern: '^(?P<code>[A-Za-z0-9]+)_[Ee](?P<ep>\\d+)_(?P<num>\\d+)$'
+        - pattern: '^(?P<code>[A-Za-z0-9]+)_[Ee](?P<ep>\d+)_(?P<num>\d+)$'
           sequence: "EP_{ep}"
 
     ingest_strip_suffix:
@@ -72,7 +72,7 @@ configuration:
     ingest_shot_pattern:
         type: str
         description: Regular expression every shot (clip) name must match.
-        default_value: "^[A-Z0-9]+_[A-Z0-9]+_\\d{4}$"
+        default_value: "^[A-Z0-9]+_[A-Z0-9]+_\d{4}$"
 
     ingest_sequence_pattern:
         type: str
